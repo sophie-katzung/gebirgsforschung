@@ -1,0 +1,110 @@
+library(ncdf4)
+library(RNetCDF)
+
+rm(list = ls())
+
+input_file <- "C:/Users/Sophie/Dokumente/Projekt_Gebirgsforschung/Inputdata/met_insitu_oas_1997_2010_full_final_RNetCDF.nc" #anpassen
+
+out_dir <- "C:/Users/Sophie/Dokumente/Projekt_Gebirgsforschung/Inputdata/meteo_processed/oas"#speicherort Station anpassen
+
+if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+
+nc <- nc_open(input_file)
+
+# -----------------------------
+# DATA
+# -----------------------------
+time <- ncvar_get(nc, "time")
+temp <- ncvar_get(nc, "temp")
+hum  <- ncvar_get(nc, "hum")
+ws   <- ncvar_get(nc, "ws")
+precip <- ncvar_get(nc, "precip")
+swin <- ncvar_get(nc, "swin")
+
+lat <- as.numeric(ncvar_get(nc, "lat"))
+lon <- as.numeric(ncvar_get(nc, "lon"))
+
+nc_close(nc)
+
+# -----------------------------
+# YEARS
+# -----------------------------
+dates <- as.POSIXct(time, origin = "1970-01-01", tz = "UTC")
+years <- as.numeric(format(dates, "%Y"))
+
+# -----------------------------
+# LOOP YEAR
+# -----------------------------
+for (yr in sort(unique(years))) {
+  
+  idx <- which(years == yr)
+  
+  out_file <- file.path(out_dir, paste0("oas_", yr, ".nc"))#Station: oas anpassen
+  if (file.exists(out_file)) file.remove(out_file)
+  
+  nc_out <- create.nc(out_file)
+  
+  # -----------------------------
+  # DIMENSION
+  # -----------------------------
+  dim.def.nc(nc_out, "time", length(idx))
+  
+  # -----------------------------
+  # VARIABLES (1D time series)
+  # -----------------------------
+  var.def.nc(nc_out, "time", "NC_DOUBLE", "time")
+  
+  var.def.nc(nc_out, "temp",   "NC_DOUBLE", "time")
+  var.def.nc(nc_out, "hum",    "NC_DOUBLE", "time")
+  var.def.nc(nc_out, "ws",     "NC_DOUBLE", "time")
+  var.def.nc(nc_out, "precip", "NC_DOUBLE", "time")
+  var.def.nc(nc_out, "swin",   "NC_DOUBLE", "time")
+  
+  # -----------------------------
+  # SCALAR COORDINATES (WICHTIG!)
+  # -----------------------------
+  var.def.nc(nc_out, "lat", "NC_DOUBLE", character(0))
+  var.def.nc(nc_out, "lon", "NC_DOUBLE", character(0))
+  
+  # -----------------------------
+  # ATTRIBUTES
+  # -----------------------------
+  att.put.nc(nc_out, "time", "units", "NC_CHAR",
+             "seconds since 1970-01-01 00:00:00")
+  
+  att.put.nc(nc_out, "lat", "units", "NC_CHAR", "degrees_north")
+  att.put.nc(nc_out, "lon", "units", "NC_CHAR", "degrees_east")
+  
+  vars <- c("temp","hum","ws","precip","swin")
+  
+  for (v in vars) {
+    att.put.nc(nc_out, v,
+               "coordinates",
+               "NC_CHAR",
+               "lat lon")
+  }
+  
+  att.put.nc(nc_out, "NC_GLOBAL",
+             "featureType",
+             "NC_CHAR",
+             "timeSeries")
+  
+  # -----------------------------
+  # WRITE
+  # -----------------------------
+  var.put.nc(nc_out, "time", time[idx])
+  
+  var.put.nc(nc_out, "temp",   temp[idx])
+  var.put.nc(nc_out, "hum",    hum[idx])
+  var.put.nc(nc_out, "ws",     ws[idx])
+  var.put.nc(nc_out, "precip", precip[idx])
+  var.put.nc(nc_out, "swin",   swin[idx])
+  
+  # ✔ FIX: scalar write
+  var.put.nc(nc_out, "lat", lat)
+  var.put.nc(nc_out, "lon", lon)
+  
+  close.nc(nc_out)
+}
+
+cat("✅ Fertig: echte 1D Zeitreihe mit Punkt-Koordinaten erstellt\n")
